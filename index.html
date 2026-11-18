@@ -26,6 +26,11 @@ body{background:var(--night);color:var(--ink);font-family:var(--body);overflow:h
 .coin{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff2b0,var(--coin) 55%,#c98d12);box-shadow:inset 0 -2px 0 rgba(0,0,0,.25);flex:none}
 .wallet b{font-family:var(--display);font-weight:400;font-size:26px;letter-spacing:.5px;font-variant-numeric:tabular-nums;color:var(--coin)}
 .wallet span#rate{font-weight:800;color:var(--good);font-size:14px;font-variant-numeric:tabular-nums}
+.left{display:grid;gap:8px;justify-items:start}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 12px;display:flex;align-items:baseline;gap:10px;font-weight:800;font-size:14px;font-variant-numeric:tabular-nums;backdrop-filter:blur(6px)}
+.stage b{font:400 18px var(--display);letter-spacing:.4px;color:var(--fox)}
+.stage .time{color:var(--ink)}
+.stage .time.low{color:var(--bad)}
 .board{list-style:none;margin:0;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;min-width:170px;font-size:13px;display:grid;gap:3px;backdrop-filter:blur(6px)}
 .board li{display:flex;justify-content:space-between;gap:14px;font-variant-numeric:tabular-nums}
 .board li i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
@@ -67,7 +72,10 @@ button.lock.on{background:#2d4a63;color:#bfe6ff}
   <canvas id="cv"></canvas>
   <canvas id="ui" aria-label="Egg Heist game field. Drag to move."></canvas>
   <div class="hud top">
-    <div class="wallet"><span class="coin"></span><b id="coins">0</b><span id="rate">+0/s</span></div>
+    <div class="left">
+      <div class="wallet"><span class="coin"></span><b id="coins">0</b><span id="rate">+0/s</span></div>
+      <div class="stage"><b id="stageNo">Stage 1</b><span id="stageGoal">0/2 eggs</span><span id="stageTime" class="time">1:50</span></div>
+    </div>
     <ol id="board" class="board"></ol>
   </div>
   <div class="hud bottom">
@@ -96,6 +104,7 @@ button.lock.on{background:#2d4a63;color:#bfe6ff}
         <li>Buy eggs off the hatchery belt and carry them home. Each egg in your coop earns coins every second.</li>
         <li>Sneak into a rival's den and steal their eggs. If the owner tags you, the egg goes back.</li>
         <li>Rivals raid you too. Tag a thief to win your egg back, or lock your coop for 20 seconds.</li>
+        <li>Each stage asks you to steal a set number of eggs before the clock runs out. Every stage gives you less time and puts more, faster guard dogs on the dens.</li>
       </ol>
       <p id="glErr" class="err" hidden>This browser couldn't start 3D graphics. Try another browser or turn on hardware acceleration.</p>
       <button id="startBtn" class="act">Start the heist</button>
@@ -134,7 +143,12 @@ const KINDS = {
   raccoon: {body:'#8d99a6', belly:'#d8dee4', ear:'#2a2f36', mask:'#262b31', stripes:'#2a2f36'},
   weasel:  {body:'#c58f52', belly:'#f3dfc0', ear:'#6b4524', tip:'#5a3a1d'},
   possum:  {body:'#d9cfd6', belly:'#f6f0f3', ear:'#f2a6c0', nose:'#f2a6c0'},
+  hound:   {body:'#5a4c40', belly:'#a89a8a', ear:'#2e2620', collar:'#ff5d6c'},
 };
+const stageGoal  = n => 2 + Math.floor((n-1)/2);
+const stageLimit = n => Math.max(40, 110 - 7*(n-1));
+const guardCount = n => Math.min(12, n + 1);
+const guardSpeed = n => Math.min(218, 150 + 7*n);
 
 const rand = (a,b) => a + Math.random()*(b-a);
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
@@ -165,17 +179,18 @@ const player = makeActor('fox','You',2,230);
 const actors = [player, makeActor('raccoon','Rook',0,172), makeActor('weasel','Mabel',1,178), makeActor('possum','Juniper',3,168)];
 const ownerOf = bi => actors.find(a=>a.base===bi);
 
-let coins = 100, speedLvl = 0;
+let coins = 100, speedLvl = 0, stage = 1, stageStolen = 0, stageTime = 0;
+const guards = [];
 PB.slots[0] = newEgg(0);
 for (const a of actors) if (a!==player) { const b=bases[a.base]; const n=2+Math.floor(Math.random()*2); for(let k=0;k<n;k++) b.slots[k]=newEgg(Math.random()<.25?1:0); }
 try {
   const s = JSON.parse(localStorage.getItem(KEY)||'null');
   if (s && typeof s.coins==='number') {
-    coins = s.coins; speedLvl = s.speedLvl||0; PB.unlocked = clamp(s.unlocked||4,4,8);
+    coins = s.coins; speedLvl = s.speedLvl||0; stage = s.stage||1; PB.unlocked = clamp(s.unlocked||4,4,8);
     PB.slots = Array(8).fill(null).map((_,k)=> (s.slots && s.slots[k]!=null) ? newEgg(s.slots[k]) : null);
   }
 } catch(e) {}
-function save(){try{localStorage.setItem(KEY,JSON.stringify({coins,speedLvl,unlocked:PB.unlocked,slots:PB.slots.map(e=>e?e.t:null)}));}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({coins,speedLvl,stage,unlocked:PB.unlocked,slots:PB.slots.map(e=>e?e.t:null)}));}catch(e){}}
 
 const belt = [], floatQueue = [];
 let spawnT = 0;
@@ -276,7 +291,7 @@ function renderShop(){
   else add('Quick paws','Level 5/5','Maxed',false,()=>{});
   add('Start over', resetArmed?'Tap again to wipe your coop and coins':'Wipe your progress on this device', resetArmed?'Confirm':'Reset', true, ()=>{
     if(!resetArmed){resetArmed=true;setTimeout(()=>{resetArmed=false;if(!$('shop').hidden)renderShop();},4000);return;}
-    try{localStorage.removeItem(KEY);}catch(e){} coins=100;speedLvl=0;PB.unlocked=4;PB.slots=Array(8).fill(null);PB.slots[0]=newEgg(0);player.carry=null;resetArmed=false;toast('Fresh start.');
+    try{localStorage.removeItem(KEY);}catch(e){} coins=100;speedLvl=0;PB.unlocked=4;PB.slots=Array(8).fill(null);PB.slots[0]=newEgg(0);player.carry=null;resetArmed=false;toast('Fresh start.');startStage(1);
   });
 }
 
@@ -358,7 +373,7 @@ function deliver(a){
   }
   b.slots[k]=egg; a.carry=null;
   if (from>=0 && from!==a.base) {
-    if (a===player) toast(`Heist complete! The ${ty.name} egg is yours.`,'good');
+    if (a===player) { stageStolen++; toast(`Heist complete! The ${ty.name} egg is yours. (${stageStolen}/${stageGoal(stage)})`,'good'); if (stageStolen>=stageGoal(stage)) stageClear(); }
     else if (from===PB.i) toast(`${a.name} got away with your ${ty.name} egg.`,'bad');
   }
   if (a===player) float(a.x,a.y,ty.name+' placed','#f4efe2',7.5);
@@ -388,6 +403,52 @@ function pushOut(a){
   }
 }
 
+// ================= stages & guards =================
+function startStage(n){
+  stage=n; stageStolen=0; stageTime=stageLimit(n);
+  guards.length=0;
+  const dens=bases.filter(b=>b!==PB), cnt=guardCount(n);
+  for (let i=0;i<cnt;i++) { const b=dens[i%3]; guards.push({x:b.x+rand(60,b.w-60), y:b.y+rand(60,b.h-60), r:20, den:b.i, ang:Math.PI, moving:false, stunUntil:0, state:'patrol', wp:null}); }
+  for (const b of dens) {
+    let have=0; for (let k=0;k<b.unlocked;k++) if (b.slots[k]) have++;
+    for (let k=0;k<b.unlocked&&have<3;k++) if (!b.slots[k]) { b.slots[k]=newEgg(Math.floor(Math.random()*Math.min(5,1+n/2))); have++; }
+  }
+  toast(`Stage ${n}: steal ${stageGoal(n)} eggs in ${stageLimit(n)}s. ${cnt} guard dogs on duty.`,'good');
+}
+function returnStolen(th){
+  const b=bases[th.carry.from], egg=th.carry.egg; let k=th.carry.slot;
+  if (k==null || k>=b.unlocked || b.slots[k]) k=freeSlot(b);
+  if (k>=0) b.slots[k]=egg; else { const o=ownerOf(b.i); if (o) o.coins+=TYPES[egg.t].price/2; }
+  th.carry=null; return egg;
+}
+function guardUpdate(gd,dt){
+  gd.moving=false; if (T<gd.stunUntil) return;
+  const b=bases[gd.den], cx=b.x+b.w/2, cy=b.y+b.h/2, spd=guardSpeed(stage), p=player, dp=dist(gd,p);
+  const nearDen = p.x>b.x-120&&p.x<b.x+b.w+120&&p.y>b.y-120&&p.y<b.y+b.h+120;
+  const hot = !!(p.carry && p.carry.from===gd.den);
+  if (gd.state!=='chase' && T>=p.stunUntil && dp<(hot?320:210) && (nearDen||hot)) gd.state='chase';
+  if (gd.state==='chase') {
+    if (T<p.stunUntil || Math.hypot(p.x-cx,p.y-cy)>(hot?600:430)) { gd.state='patrol'; gd.wp=null; }
+    else moveToward(gd,p.x,p.y,dt,spd*(hot?1.08:1));
+  } else if (!gd.wp || moveToward(gd,gd.wp.x,gd.wp.y,dt,spd*.45)) {
+    gd.wp={x:b.x+rand(30,b.w-30), y:b.y+rand(30,b.h-30)};
+  }
+  if (dp<gd.r+p.r+4 && T>=p.stunUntil) {
+    const stolen = p.carry && p.carry.from>=0 && p.carry.from!==p.base;
+    if (stolen) { const egg=returnStolen(p); toast(`A guard dog caught you! The ${TYPES[egg.t].name} egg went back.`,'bad'); }
+    else toast('A guard dog bit you. Keep away from the dens!','bad');
+    p.stunUntil=T+(stolen?1.6:1); gd.stunUntil=T+1.2; gd.state='patrol'; gd.wp=null;
+    const d=dp||1; p.x+=(p.x-gd.x)/d*70; p.y+=(p.y-gd.y)/d*70;
+    float(p.x,p.y,'Bitten!','#ff5d6c',8);
+  }
+  gd.x=clamp(gd.x,20,W-20); gd.y=clamp(gd.y,30,H-20);
+}
+function stageClear(){
+  const bonus=300*stage*stage; coins+=bonus;
+  toast(`Stage ${stage} cleared! Bonus +${fmt(bonus)} coins.`,'good');
+  startStage(stage+1);
+}
+
 let incomeTick = 0, saveTick = 0;
 function update(dt){
   T += dt;
@@ -404,6 +465,11 @@ function update(dt){
     if (m>0) { if (m>1) { vx/=m; vy/=m; } const spd=p.speed*(1+.12*speedLvl)*(p.carry?0.75:1); p.x+=vx*spd*dt; p.y+=vy*spd*dt; p.ang=Math.atan2(vx,vy); p.moving=true; }
   }
   for (const a of actors) { if (a!==p) aiUpdate(a,dt); }
+  for (const gd of guards) guardUpdate(gd,dt);
+  if ($('shop').hidden && $('intro').hidden) {
+    stageTime-=dt;
+    if (stageTime<=0) { toast(`Time's up! Stage ${stage} starts over.`,'bad'); startStage(stage); }
+  }
   for (const a of actors) { pushOut(a); a.x=clamp(a.x,20,W-20); a.y=clamp(a.y,30,H-20); deliver(a); }
   catches();
   coins += income(PB)*dt;
@@ -412,6 +478,8 @@ function update(dt){
   if (incomeTick>=1) { incomeTick=0; for (let k=0;k<8;k++) { const e=PB.slots[k]; if (e) { const s=slotPos(PB,k); float(s.x,s.y,'+'+fmt(TYPES[e.t].inc),'#ffcf4a',4); } } }
   saveTick += dt; if (saveTick>4) { saveTick=0; save(); }
 }
+
+startStage(stage);
 
 // ================= 3D world =================
 if (typeof THREE === 'undefined') { $('glErr').hidden=false; $('glErr').textContent='The 3D engine failed to load. Check your connection and reload.'; $('startBtn').disabled=true; return; }
@@ -615,6 +683,10 @@ function buildCritter(kind){
   head.add(part(SPH, k.nose?stdMat(k.nose):dark, 0,-.22,1.95, .25,.21,.21));
   if (kind==='fox'||kind==='weasel') head.add(part(SPH,mbe,0,-.5,.55,.95,.55,.8));
   if (k.mask) head.add(part(SPH, stdMat(k.mask), 0,.25,.5, 1.2,.38,.8));
+  if (k.collar) {
+    const col=part(new THREE.TorusGeometry(1.05,.2,8,22), stdMat(k.collar,{roughness:.4}), 0,2.85,1.05*L); col.rotation.x=Math.PI/2.3; body.add(col);
+    body.add(part(SPH, new THREE.MeshStandardMaterial({color:0xffd54a, emissive:0xffb300, emissiveIntensity:.8, metalness:.6, roughness:.3}), 0,2.45,1.95*L, .28,.28,.12));
+  }
   for (const s of [-1,1]) {
     head.add(part(SPH,white,s*.46,.3,1.0,.28,.32,.2));
     head.add(part(SPH,dark,s*.48,.3,1.15,.16,.19,.1));
@@ -696,18 +768,36 @@ function syncEggs(){
   for (const a of actors) if (a.carry) { const v=views.get(a); const bob=v.body.position.y; placeEgg(a.carry.egg.id,a.carry.egg.t,X(a.x),5.15+bob,Z(a.y),1.05,0,null); }
   for (const [id,o] of eggObjs) if (o.seen!==frameNo) { scene.remove(o.m); if (o.tag) killSprite(o.tag); eggObjs.delete(id); }
 }
+const guardViews = new Map();
+function syncGuards(dt){
+  for (const [gd,v] of guardViews) if (!guards.includes(gd)) {
+    scene.remove(v.grp); killSprite(v.label);
+    v.grp.traverse(o=>{ if (o.material) o.material.dispose(); });
+    guardViews.delete(gd);
+  }
+  for (const gd of guards) {
+    let v=guardViews.get(gd);
+    if (!v) { v=buildCritter('hound'); v.grp.scale.setScalar(1.12); v.label.userData.h=1.2; guardViews.set(gd,v); }
+    animView(gd,v,dt);
+    const chase=gd.state==='chase';
+    setSprite(v.label, textTex(chase?'Guard !':'Guard', chase?'#2a0609':'#d8cfc4', chase?'rgba(255,93,108,.95)':'rgba(30,22,16,.75)', 34));
+    v.label.position.set(X(gd.x), 7, Z(gd.y));
+  }
+}
+function animView(a,v,dt){
+  v.grp.position.set(X(a.x),0,Z(a.y));
+  let d=a.ang-v.rot; d=Math.atan2(Math.sin(d),Math.cos(d)); v.rot+=d*Math.min(1,dt*12); v.grp.rotation.y=v.rot;
+  const stunned=T<a.stunUntil, mv=a.moving&&!stunned, ph=T*(a===player?15:13);
+  v.body.position.y = mv ? Math.abs(Math.sin(ph))*.35 : Math.sin(T*2+(a.base||a.den||0))*.05;
+  v.legs.forEach((l,i)=>{ l.rotation.x = mv ? Math.sin(ph+(i===0||i===3?0:Math.PI))*.7 : 0; });
+  v.tail.rotation.y = Math.sin(T*(mv?10:3))*.35;
+  v.head.rotation.z = stunned ? Math.sin(T*10)*.25 : 0;
+  v.stars.visible=stunned; v.stars.rotation.y=T*5;
+}
 function syncActors(dt){
   for (const a of actors) {
     const v=views.get(a);
-    v.grp.position.set(X(a.x),0,Z(a.y));
-    let d=a.ang-v.rot; d=Math.atan2(Math.sin(d),Math.cos(d)); v.rot+=d*Math.min(1,dt*12); v.grp.rotation.y=v.rot;
-    const stunned=T<a.stunUntil, mv=a.moving&&!stunned;
-    const ph=T*(a===player?15:13);
-    v.body.position.y = mv ? Math.abs(Math.sin(ph))*.35 : Math.sin(T*2+a.base)*.05;
-    v.legs.forEach((l,i)=>{ l.rotation.x = mv ? Math.sin(ph+(i===0||i===3?0:Math.PI))*.7 : 0; });
-    v.tail.rotation.y = Math.sin(T*(mv?10:3)+a.base)*.35;
-    v.head.rotation.z = stunned ? Math.sin(T*10)*.25 : 0;
-    v.stars.visible=stunned; v.stars.rotation.y=T*5;
+    animView(a,v,dt);
     const thief = a.carry && a.carry.from===PB.i && a!==player;
     const text = thief ? `${a.name} · THIEF` : a.name;
     setSprite(v.label, textTex(text, thief?'#2a0609':(a===player?'#ff9a52':'#e9e4d8'), thief?'rgba(255,93,108,.95)':'rgba(8,14,20,.72)', 38));
@@ -793,6 +883,10 @@ function hud(dt){
   hudT-=dt; if (hudT>0) return; hudT=0.1;
   $('coins').textContent=fmt(coins);
   $('rate').textContent='+'+fmt(income(PB))+'/s';
+  $('stageNo').textContent='Stage '+stage;
+  $('stageGoal').textContent=`${stageStolen}/${stageGoal(stage)} eggs stolen`;
+  const st=Math.max(0,Math.ceil(stageTime)), te=$('stageTime');
+  te.textContent=Math.floor(st/60)+':'+String(st%60).padStart(2,'0'); te.classList.toggle('low', st<=15);
   const a=computeAction(), btn=$('actBtn');
   const key=a?a.kind+a.label+a.ok:'none'+(player.carry?'c':'')+(T<player.stunUntil?'s':'');
   if (key!==lastAct) {
@@ -813,7 +907,7 @@ let last=performance.now();
 function frame(now){
   const dt=Math.min(0.05,(now-last)/1000); last=now; frameNo++;
   update(dt);
-  syncCamera(dt); syncActors(dt); syncEggs(); syncBases(); syncFloats(dt); syncFX(dt);
+  syncCamera(dt); syncActors(dt); syncGuards(dt); syncEggs(); syncBases(); syncFloats(dt); syncFX(dt);
   if (composer) composer.render(); else renderer.render(scene,camera);
   drawOverlay(); hud(dt);
   requestAnimationFrame(frame);
