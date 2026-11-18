@@ -1,12 +1,12 @@
 # Egg Heist
 
-A 3D browser game (Three.js): buy eggs off the hatchery belt, steal from rival dens, and lock your coop against thieves.
+A 3D browser game (Three.js). Run north into guarded zones, grab eggs, carry them back to your pen, and hatch them into pets that earn coins every second.
 
-Open `index.html` in a browser to play.
+Play: https://leewonyoungethan.github.io/egg/
 
 ## Controls
 - WASD / arrow keys: move
-- E / Space: buy, steal, sell
-- L: lock coop
-- U: upgrades
-- Touch: drag to move, use the on-screen buttons
+- Space: jump (over guards, mud and snap traps)
+- E: grab an egg / sell a pet
+- U: shop (bigger pen, treadmill, rebirth)
+- Touch: drag to move, on-screen buttons
