@@ -8,6 +8,7 @@ Play: https://leewonyoungethan.github.io/egg/
 - WASD / arrow keys: move
 - Space: jump (over guards, mud and snap traps)
 - E: grab an egg / sell a pet
-- U: shop (bigger pen, treadmill, rebirth)
+- B: bag (stored eggs and pets)
+- U: shop (bigger pen, treadmill, egg sling, rebirth)
 - Mouse drag: turn the camera
 - Touch: left half moves, right half turns the camera
