@@ -79,7 +79,7 @@ button.jump{background:#2d4a63;color:#d4ecff;padding:16px 18px;font-size:18px}
     </div>
   </div>
   <div class="hud bottom">
-    <div class="hint"><kbd>WASD</kbd> move · <kbd>Space</kbd> jump · <kbd>E</kbd> grab / sell · <kbd>U</kbd> shop</div>
+    <div class="hint"><kbd>WASD</kbd> move · drag mouse to turn · <kbd>Space</kbd> jump · <kbd>E</kbd> grab / sell</div>
     <div class="btns">
       <button id="shopBtn">Shop</button>
       <button id="jumpBtn" class="jump">Jump</button>
@@ -145,9 +145,12 @@ const ZONES = [
   {name:'Moon Ridge', y0:250,  y1:750,  ground:'#2e2c50', guards:8, gSpeed:252, alert:320, kind:'bear',  w:[0,0,0,25,40,28,7],  mud:4, snaps:6},
 ];
 const BASE = {x:150, y:2750, w:1100, h:480};
-const TREAD = {x:205, y:2840, w:170, h:250};
+const TREAD = {x:205, y:2920, w:170, h:250};
+const SELL = {x:175, y:2765, w:190, h:120};
+const SHOPR = {x:1080, y:2765, w:165, h:120};
+const LANE = {x0:400, x1:1000};
 const MAX_PEN = 18;
-const slotPos = k => ({x: 480 + (k%6)*124, y: 2865 + Math.floor(k/6)*112});
+const slotPos = k => ({x: 450 + (k%6)*120, y: 2930 + Math.floor(k/6)*100});
 const KINDS = {
   fox:     {body:'#ff8a3d', belly:'#fff1e0', ear:'#3a2418', tip:'#fff6ea'},
   raccoon: {body:'#8d99a6', belly:'#d8dee4', ear:'#2a2f36', mask:'#262b31', stripes:'#2a2f36'},
@@ -199,7 +202,7 @@ const peds = [];
 ZONES.forEach((z,zi)=>{
   for (let i=0;i<6;i++) {
     const col=i%3, row=Math.floor(i/3);
-    const p={zone:zi, x:[310,700,1090][col]+rand(-60,60), y:z.y0+140+row*270+rand(-30,30), egg:null, respawn:rand(0,2)};
+    const p={zone:zi, x:[510,700,890][col]+rand(-35,35), y:z.y0+140+row*270+rand(-30,30), egg:null, respawn:rand(0,2)};
     p.egg={id:uid++, t:weighted(z.w)}; peds.push(p);
   }
 });
@@ -210,7 +213,7 @@ ZONES.forEach((z,zi)=>{
 });
 const traps = [];
 ZONES.forEach((z,zi)=>{
-  const place = (type,r) => { for (let g=0; g<60; g++) { const x=rand(200,1200), y=rand(z.y0+60,z.y1-60); if (peds.some(p=>Math.hypot(p.x-x,p.y-y)<r+80)) continue; if (traps.some(t=>Math.hypot(t.x-x,t.y-y)<t.r+r+30)) continue; traps.push({type,x,y,r,zone:zi,shut:0}); return; } };
+  const place = (type,r) => { for (let g=0; g<60; g++) { const x=rand(LANE.x0+70,LANE.x1-70), y=rand(z.y0+60,z.y1-60); if (peds.some(p=>Math.hypot(p.x-x,p.y-y)<r+80)) continue; if (traps.some(t=>Math.hypot(t.x-x,t.y-y)<t.r+r+30)) continue; traps.push({type,x,y,r,zone:zi,shut:0}); return; } };
   for (let i=0;i<z.mud;i++) place('mud',62);
   for (let i=0;i<z.snaps;i++) place('snap',26);
 });
@@ -218,8 +221,8 @@ ZONES.forEach((z,zi)=>{
 function makeActor(kind,name,x,y,speed){return {kind,name,x,y,r:20,ang:Math.PI,moving:false,carry:null,stunUntil:0,speed,air:0};}
 const player = makeActor('fox','You',700,3000,210);
 const rivals = [
-  Object.assign(makeActor('raccoon','Rook',70,2660,190),{hut:{x:70,y:2660},state:'home',wait:rand(6,12),target:null}),
-  Object.assign(makeActor('weasel','Mabel',1330,2660,196),{hut:{x:1330,y:2660},state:'home',wait:rand(9,16),target:null}),
+  Object.assign(makeActor('raccoon','Rook',450,2690,190),{hut:{x:450,y:2690},state:'home',wait:rand(6,12),target:null}),
+  Object.assign(makeActor('weasel','Mabel',950,2690,196),{hut:{x:950,y:2690},state:'home',wait:rand(9,16),target:null}),
 ];
 const actors = [player, ...rivals];
 const floatQueue = [];
@@ -247,9 +250,19 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
-ui.addEventListener('pointerdown', e => { joy = {id:e.pointerId, ox:e.offsetX, oy:e.offsetY, x:e.offsetX, y:e.offsetY}; ui.setPointerCapture(e.pointerId); });
-ui.addEventListener('pointermove', e => { if (joy && e.pointerId===joy.id) { joy.x=e.offsetX; joy.y=e.offsetY; } });
-const endJoy = e => { if (joy && e.pointerId===joy.id) joy=null; };
+// camera: yaw 0 looks north up the lane. Mouse drag (or touch on the right half) turns it.
+let camYaw = 0, camPitch = 0.42, look = null;
+ui.addEventListener('contextmenu', e => e.preventDefault());
+ui.addEventListener('pointerdown', e => {
+  ui.setPointerCapture(e.pointerId);
+  if (e.pointerType==='mouse' || e.offsetX > ui.clientWidth/2) look = {id:e.pointerId, x:e.offsetX, y:e.offsetY};
+  else joy = {id:e.pointerId, ox:e.offsetX, oy:e.offsetY, x:e.offsetX, y:e.offsetY};
+});
+ui.addEventListener('pointermove', e => {
+  if (joy && e.pointerId===joy.id) { joy.x=e.offsetX; joy.y=e.offsetY; }
+  if (look && e.pointerId===look.id) { camYaw -= (e.offsetX-look.x)*.006; camPitch = clamp(camPitch + (e.offsetY-look.y)*.004, .15, 1.1); look.x=e.offsetX; look.y=e.offsetY; }
+});
+const endJoy = e => { if (joy && e.pointerId===joy.id) joy=null; if (look && e.pointerId===look.id) look=null; };
 ui.addEventListener('pointerup', endJoy); ui.addEventListener('pointercancel', endJoy);
 $('actBtn').addEventListener('click', () => doAction());
 $('jumpBtn').addEventListener('click', () => jump());
@@ -272,6 +285,10 @@ function computeAction(){
   let best=null, bd=75;
   for (const pd of peds) if (pd.egg) { const d=dist(p,pd); if (d<bd) { bd=d; best=pd; } }
   if (best) return {kind:'grab', ref:best, label:`Grab ${TYPES[best.egg.t].name} egg`, cls:'', ok:true};
+  if (inRect(p,SELL)) {
+    let n=0, v=0; for (let k=0;k<penSize;k++) if (pen[k]&&pen[k].left<=0) { n++; v+=petInc(pen[k])*30; }
+    return n ? {kind:'sellAll', label:`Sell all ${n} pets +${fmt(v)}`, cls:'sell', ok:true} : {kind:'info', label:'No pets to sell', ok:false};
+  }
   if (inRect(p,BASE)) {
     let bk=-1, bdd=62;
     for (let k=0;k<penSize;k++) if (pen[k]) { const d=dist(p,slotPos(k)); if (d<bdd) { bdd=d; bk=k; } }
@@ -287,6 +304,10 @@ function doAction(){
   if (paused()) return;
   const a=computeAction(); if (!a || !a.ok) return;
   const p=player;
+  if (a.kind==='sellAll') {
+    let v=0; for (let k=0;k<penSize;k++) if (pen[k]&&pen[k].left<=0) { v+=petInc(pen[k])*30; pen[k]=null; }
+    coins+=v; float(p.x,p.y,'+'+fmt(v),'#5ee0a0',8); toast(`Sold your pets for ${fmt(v)}.`); return;
+  }
   if (a.kind==='grab') {
     p.carry={t:a.ref.egg.t, id:a.ref.egg.id, ped:a.ref}; a.ref.egg=null; a.ref.respawn=rand(9,14);
     toast(`Got a ${TYPES[p.carry.t].name} egg! Run home.`,'good');
@@ -329,7 +350,7 @@ function moveToward(a,tx,ty,dt,spd){
 }
 function dropEgg(a){ if (!a.carry) return; const pd=a.carry.ped; if (pd && !pd.egg) { pd.egg={id:uid++, t:a.carry.t}; pd.respawn=0; } a.carry=null; }
 function guardUpdate(g,dt){
-  g.moving=false; if (T<g.stunUntil) return;
+  g.moving=false; g.x=clamp(g.x,LANE.x0+24,LANE.x1-24); if (T<g.stunUntil) return;
   const z=ZONES[g.zone], p=player, dp=dist(g,p);
   const inZoneArea = p.y>z.y0-120 && p.y<z.y1+160 && !inRect(p,BASE);
   const spd = z.gSpeed;
@@ -382,14 +403,20 @@ function update(dt){
     if (keys.has('w')||keys.has('arrowup')) vy--; if (keys.has('s')||keys.has('arrowdown')) vy++;
     if (joy) { const jx=(joy.x-joy.ox)/50, jy=(joy.y-joy.oy)/50; if (Math.hypot(jx,jy)>0.15) { vx+=jx; vy+=jy; } }
     const m=Math.hypot(vx,vy);
-    if (m>0) { if (m>1) { vx/=m; vy/=m; } const spd=pSpeed()*(p.carry?.85:1)*slow; p.x+=vx*spd*dt; p.y+=vy*spd*dt; p.ang=Math.atan2(vx,vy); p.moving=true; }
+    if (m>0) {
+      if (m>1) { vx/=m; vy/=m; }
+      const cs=Math.cos(camYaw), sn=Math.sin(camYaw), mx=cs*vx+sn*vy, my=-sn*vx+cs*vy;
+      const spd=pSpeed()*(p.carry?.85:1)*slow; p.x+=mx*spd*dt; p.y+=my*spd*dt; p.ang=Math.atan2(mx,my); p.moving=true;
+    }
   }
   p.training = onTread && !p.moving;
   if (p.training) {
     p.ang=Math.PI; speedXP += 8*treadLvl*dt;
     if (speedXP>=xpNeed(speedLvl)) { speedXP-=xpNeed(speedLvl); speedLvl++; toast(`Speed level ${speedLvl}! You run ${pSpeed()} fast now.`,'good'); float(p.x,p.y,'Speed up!','#5ee0a0',8); }
   }
-  p.x=clamp(p.x,30,W-30); p.y=clamp(p.y,40,H-30);
+  p.y=clamp(p.y,175,BASE.y+BASE.h-25);
+  if (p.y<BASE.y-5) p.x=clamp(p.x,LANE.x0+22,LANE.x1-22); else p.x=clamp(p.x,BASE.x+25,BASE.x+BASE.w-25);
+  const inShop=inRect(p,SHOPR); if (inShop && !p.wasInShop) { $('shop').hidden=false; renderShop(); } p.wasInShop=inShop;
   // deliver to pen
   if (p.carry && inRect(p,BASE)) {
     let k=-1; for (let i=0;i<penSize;i++) if (!pen[i]) { k=i; break; }
@@ -419,7 +446,7 @@ const X = x => (x - W/2)*S, Z = y => (y - H/2)*S;
 const scene = new THREE.Scene();
 const SKY = 0x0a1420;
 scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 85, 220);
+scene.fog = new THREE.Fog(SKY, 70, 190);
 const camera = new THREE.PerspectiveCamera(42, 1, 0.5, 900);
 scene.add(new THREE.HemisphereLight(0x6a88c0, 0x1a2a1c, 0.75));
 scene.add(new THREE.AmbientLight(0x223344, 0.3));
@@ -456,18 +483,16 @@ const rockM = stdMat(0x6a6460,{roughness:.95});
 const leafM = stdMat(0x2f6a3a,{roughness:.9}), fruitM = new THREE.MeshStandardMaterial({color:0xff5d4a, emissive:0x661a10, roughness:.5}), trunkM = stdMat(0x4a3320);
 ZONES.forEach((z,zi)=>{
   const tex = repTex(canvasTex(256,256,(c,w,h)=>noiseFill(c,w,h,z.ground,['rgba(255,255,255,.06)','rgba(0,0,0,.25)','rgba(255,255,255,.04)'],2600,2,4)),10,5);
-  flat(120, (z.y1-z.y0)*S, 0, Z((z.y0+z.y1)/2), .03, stdMat(0xffffff,{map:tex, roughness:1}));
+  flat((LANE.x1-LANE.x0)*S, (z.y1-z.y0)*S, 0, Z((z.y0+z.y1)/2), .03, stdMat(0xffffff,{map:tex, roughness:1}));
   // arch at south edge
   const ay=Z(z.y1)+1, archCol=new THREE.Color(['#7bd389','#ffb36b','#9fb6c9','#b48cff'][zi]);
   for (const s of [-1,1]) { scene.add(part(BOX,woodMat,s*9,4,ay,1.2,8,1.2)); scene.add(part(SPH,new THREE.MeshStandardMaterial({color:archCol,emissive:archCol,emissiveIntensity:1.6}),s*9,8.6,ay,.6,.6,.6,false)); }
   const at = boardTex([[`ZONE ${zi+1} · ${z.name.toUpperCase()}`,'64px "Lilita One", sans-serif','#'+archCol.getHexString(),62],[`${z.guards} guards · ${['easy','tricky','hard','brutal'][zi]}`,'800 40px Nunito, sans-serif','#e9e4d8',132]]);
   const af=sign(0,ay,16,4.5,at,5.4); af.userData.redraw=()=>{};
-  // zone side fences
-  for (const s of [-1,1]) for (let y=z.y0; y<=z.y1; y+=60) scene.add(part(CYL,woodMat,X(s<0?100:1300),1.1,Z(y),.2,2.2,.2));
   // decor
   for (let i=0;i<14;i++) {
-    const x=rand(130,1270), y=rand(z.y0+30,z.y1-30);
-    if (peds.some(p=>Math.hypot(p.x-x,p.y-y)<110) || traps.some(t=>Math.hypot(t.x-x,t.y-y)<t.r+40) || Math.abs(x-700)<70) continue;
+    const x=Math.random()<.5?rand(LANE.x0+15,LANE.x0+70):rand(LANE.x1-70,LANE.x1-15), y=rand(z.y0+30,z.y1-30);
+    if (peds.some(p=>Math.hypot(p.x-x,p.y-y)<90) || traps.some(t=>Math.hypot(t.x-x,t.y-y)<t.r+40)) continue;
     if (zi===0) { const c=new THREE.Color().setHSL(Math.random(),.7,.65); scene.add(part(SPH,new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.25}),X(x),.35,Z(y),.35,.35,.35,false)); scene.add(part(CYL,leafM,X(x),.15,Z(y),.06,.3,.06,false)); }
     else if (zi===1) { const g=new THREE.Group(); g.position.set(X(x),0,Z(y)); g.add(part(CYL,trunkM,0,1.2,0,.35,2.4,.35)); g.add(part(SPH,leafM,0,3.4,0,2,1.7,2)); for(let f=0;f<5;f++) g.add(part(SPH,fruitM,Math.cos(f*1.3)*1.6,3.1+Math.sin(f)*.6,Math.sin(f*1.3)*1.6,.28,.28,.28,false)); scene.add(g); }
     else if (zi===2) { const r=part(new THREE.DodecahedronGeometry(1.4),rockM,X(x),.7,Z(y),rand(.8,1.6),rand(.6,1.2),rand(.8,1.5)); r.rotation.set(rand(0,3),rand(0,3),0); scene.add(r); }
@@ -524,6 +549,33 @@ const tmBelt = new THREE.Mesh(new THREE.PlaneGeometry(TREAD.w*S-2,TREAD.h*S-1.4)
 for (const s of [-1,1]) { tm.add(part(CYL,steel,s*(TREAD.w*S/2-.4),1.8,-TREAD.h*S/2+2,.12,2.4,.12)); tm.add(part(BOX,steel,s*(TREAD.w*S/2-.4),3,-TREAD.h*S/2+5,.2,.2,6)); }
 const tmScreenTex = canvasTex(256,128,()=>{}); const tmScreen = new THREE.Mesh(new THREE.PlaneGeometry(4.4,2.2), new THREE.MeshStandardMaterial({map:tmScreenTex, emissive:0xffffff, emissiveMap:tmScreenTex, emissiveIntensity:1}));
 tm.add(part(BOX,steel,0,3.3,-TREAD.h*S/2+1.2,4.8,2.6,.3)); tmScreen.position.set(0,3.3,-TREAD.h*S/2+1.38); tm.add(tmScreen);
+// lane walls
+{
+  const brick = repTex(canvasTex(256,128,(c,w,h)=>{ c.fillStyle='#5e3a2c'; c.fillRect(0,0,w,h); for (let r=0;r<8;r++) for (let i=-1;i<5;i++) { const x=i*64+(r%2?32:0), y=r*16; c.fillStyle=`hsl(${12+Math.random()*10},${38+Math.random()*12}%,${30+Math.random()*10}%)`; c.fillRect(x+2,y+2,60,12); } }),1,1);
+  const len=(BASE.y-150)*S, hgt=12;
+  for (const s of [-1,1]) {
+    const t=brick.clone(); t.needsUpdate=true; t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(len/6,hgt/3);
+    const wl=part(BOX,stdMat(0xffffff,{map:t,roughness:.95}),X(s<0?LANE.x0:LANE.x1)+s*1,hgt/2,Z((150+BASE.y)/2),2,hgt,len); scene.add(wl);
+    scene.add(part(BOX,stdMat(0x7a5040),X(s<0?LANE.x0:LANE.x1)+s*1,hgt+.25,Z((150+BASE.y)/2),2.6,.5,len,false));
+  }
+  const tb=brick.clone(); tb.needsUpdate=true; tb.wrapS=tb.wrapT=THREE.RepeatWrapping; tb.repeat.set(10,4);
+  scene.add(part(BOX,stdMat(0xffffff,{map:tb,roughness:.95}),0,hgt/2,Z(150)-1,(LANE.x1-LANE.x0)*S+4,hgt,2));
+}
+// market stalls
+function stall(r,label,stripe){
+  const g=new THREE.Group(); g.position.set(X(r.x+r.w/2),0,Z(r.y+r.h/2)); scene.add(g);
+  const w=r.w*S, d=r.h*S;
+  for (const sx of [-1,1]) for (const sz of [-1,1]) g.add(part(CYL,woodMat,sx*(w/2-.4),2.6,sz*(d/2-.4),.22,5.2,.22));
+  g.add(part(BOX,woodMat,0,1.1,-d/2+1,w-1,2.2,1.4));
+  const aw=repTex(canvasTex(128,32,(c,cw,ch)=>{ for(let i=0;i<8;i++){ c.fillStyle=i%2?'#ffffff':stripe; c.fillRect(i*16,0,16,ch);} }),1,1);
+  const roof=part(BOX,stdMat(0xffffff,{map:aw,roughness:.8}),0,5.5,0,w+.6,.4,d+.6); roof.rotation.x=.12; g.add(roof);
+  const tx=boardTex([[label,'110px "Lilita One", sans-serif',stripe,98]]);
+  const f=new THREE.Mesh(new THREE.PlaneGeometry(w*.8,w*.8*180/640),new THREE.MeshStandardMaterial({map:tx,emissive:0xffffff,emissiveMap:tx,emissiveIntensity:.4}));
+  f.position.set(0,6.8,d/2-.6); g.add(f);
+  const glow=new THREE.Mesh(new THREE.RingGeometry(Math.min(w,d)/2-1,Math.min(w,d)/2-.6,40),new THREE.MeshBasicMaterial({color:new THREE.Color(stripe),transparent:true,opacity:.6,depthWrite:false})); glow.rotation.x=-Math.PI/2; glow.position.y=.1; g.add(glow);
+}
+stall(SELL,'SELL','#ffcf4a');
+stall(SHOPR,'SHOP','#4fb3ff');
 // rival huts
 for (const r of rivals) { const g=new THREE.Group(); g.position.set(X(r.hut.x),0,Z(r.hut.y)-2); scene.add(g); g.add(part(BOX,stdMat(r.kind==='raccoon'?0x3e5468:0x4f5a36),0,2.2,0,6,4.4,5)); const rf=part(new THREE.CylinderGeometry(0,4.8,2.6,4),stdMat(0x2a1d14),0,5.7,0,1,1,1); rf.rotation.y=Math.PI/4; g.add(rf); g.add(part(BOX,new THREE.MeshStandardMaterial({color:0xffd27a,emissive:0xffb840,emissiveIntensity:1.4}),0,1.4,2.55,1.6,2.6,.1,false)); }
 // trees along sides and back
@@ -743,7 +795,7 @@ function drawTreadScreen(){
 }
 function syncActors(dt){
   for (const a of actors) {
-    const v=views.get(a); animView(a,v,dt);
+    const v=views.get(a); animView(a,v,dt); v.label.visible = a!==player;
     setSprite(v.label, textTex(a.name, a===player?'#ff9a52':'#e9e4d8','rgba(8,14,20,.72)',38));
     v.label.position.set(X(a.x), (a.carry?9:6.6)+(a.air>0?Math.sin((1-a.air/.62)*Math.PI)*4.2:0), Z(a.y));
   }
@@ -766,11 +818,12 @@ function syncFX(){
 }
 const camLook=new THREE.Vector3(); let camInit=false;
 function syncCamera(dt){
-  const asp=vw/vh, zf=clamp(1.25/asp,1,1.9);
-  const tx=clamp(X(player.x),-45,45), tz=Z(player.y);
-  const want=new THREE.Vector3(tx,46*zf,tz+36*zf);
-  const k=camInit?1-Math.exp(-dt*4.5):1; camInit=true;
-  camera.position.lerp(want,k); camLook.lerp(new THREE.Vector3(tx,0,tz-4),k); camera.lookAt(camLook);
+  const asp=vw/vh, zf=clamp(1.1/asp,1,1.6);
+  const tx=X(player.x), tz=Z(player.y), d=19*zf;
+  const fx=-Math.sin(camYaw), fz=-Math.cos(camYaw);
+  const want=new THREE.Vector3(tx-fx*d*Math.cos(camPitch), 2.5+d*Math.sin(camPitch), tz-fz*d*Math.cos(camPitch));
+  const k=camInit?1-Math.exp(-dt*8):1; camInit=true;
+  camera.position.lerp(want,k); camLook.lerp(new THREE.Vector3(tx+fx*4,3,tz+fz*4),k); camera.lookAt(camLook);
   moonLight.position.set(tx-40,90,tz+30); moonLight.target.position.set(tx,0,tz-10);
   moon.position.set(camera.position.x-160,150,camera.position.z-420); moonGlow.position.copy(moon.position);
   starsObj.position.set(camera.position.x,0,camera.position.z);
@@ -806,7 +859,7 @@ function hud(dt){
   const zi=zoneAt(player), zc=$('zoneChip');
   zc.innerHTML = zi<0 ? (inRect(player,BASE)?'<b>Home</b>safe':'<b>Trail</b>between zones') : `<b>Zone ${zi+1}</b>${ZONES[zi].name}`;
   zc.classList.toggle('danger', guards.some(g=>g.state==='chase'));
-  $('spd').textContent=`Lv ${speedLvl}`;
+  $('spd').textContent=`${Math.round(pSpeed()/10)} · Lv ${speedLvl}`;
   $('pen').textContent=`${pen.slice(0,penSize).filter(Boolean).length}/${penSize}`;
   $('rebChip').hidden=rebirths===0; $('reb').textContent='×'+mult().toFixed(1);
   const a=computeAction(), btn=$('actBtn');

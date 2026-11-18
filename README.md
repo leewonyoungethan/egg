@@ -9,4 +9,5 @@ Play: https://leewonyoungethan.github.io/egg/
 - Space: jump (over guards, mud and snap traps)
 - E: grab an egg / sell a pet
 - U: shop (bigger pen, treadmill, rebirth)
-- Touch: drag to move, on-screen buttons
+- Mouse drag: turn the camera
+- Touch: left half moves, right half turns the camera
