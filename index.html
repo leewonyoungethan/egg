@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style></head><body>
+<title>Egg Heist</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap">
+<style>
+/* Layout: full-bleed moonlit farm canvas; HUD floats in a safe-area gutter, actions bottom-right */
+:root{
+  --night:#0d1720; --panel:rgba(14,26,34,.86); --line:rgba(255,255,255,.12);
+  --ink:#f4efe2; --muted:#9db0b6; --coin:#ffcf4a; --fox:#ff8a3d; --bad:#ff5d6c; --good:#5ee0a0;
+  --display:"Lilita One","Arial Rounded MT Bold",system-ui,sans-serif;
+  --body:"Nunito",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--night);color:var(--ink);font-family:var(--body);overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#app{position:relative;height:100%;overflow:hidden}
+#cv{display:block;width:100%;height:100%;cursor:crosshair}
+.hud{position:absolute;left:0;right:0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:10px;pointer-events:none}
+.hud.top{top:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+.hud.bottom{bottom:14px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap}
+.wallet{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 14px 8px 10px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(6px)}
+.coin{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff2b0,var(--coin) 55%,#c98d12);box-shadow:inset 0 -2px 0 rgba(0,0,0,.25);flex:none}
+.wallet b{font-family:var(--display);font-weight:400;font-size:26px;letter-spacing:.5px;font-variant-numeric:tabular-nums;color:var(--coin)}
+.wallet span#rate{font-weight:800;color:var(--good);font-size:14px;font-variant-numeric:tabular-nums}
+.board{list-style:none;margin:0;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;min-width:170px;font-size:13px;display:grid;gap:3px;backdrop-filter:blur(6px)}
+.board li{display:flex;justify-content:space-between;gap:14px;font-variant-numeric:tabular-nums}
+.board li i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.board .me{color:var(--fox);font-weight:800}
+.board h4{margin:0 0 2px;font:400 12px var(--display);letter-spacing:1.2px;color:var(--muted);text-transform:uppercase}
+.hint{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 12px;font-size:13px;color:var(--muted);max-width:340px}
+.hint kbd{font-family:var(--body);font-weight:800;color:var(--ink);background:rgba(255,255,255,.1);border-radius:5px;padding:0 5px}
+.btns{display:flex;gap:8px;align-items:flex-end;margin-left:auto;pointer-events:auto}
+button{font-family:var(--display);font-weight:400;font-size:16px;letter-spacing:.4px;color:var(--ink);background:#22343f;border:1px solid var(--line);border-radius:14px;padding:12px 16px;cursor:pointer;touch-action:manipulation;box-shadow:0 3px 0 rgba(0,0,0,.35)}
+button:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.35)}
+button:focus-visible{outline:3px solid var(--coin);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+button.act{background:var(--fox);color:#2a1206;font-size:19px;min-width:190px;padding:16px 20px}
+button.act.steal{background:var(--bad);color:#2a0609}
+button.act.sell{background:var(--coin);color:#2a1d02}
+button.act.idle{background:#22343f;color:var(--muted)}
+button.lock.on{background:#2d4a63;color:#bfe6ff}
+#toasts{position:absolute;top:70px;left:50%;transform:translateX(-50%);display:grid;gap:6px;justify-items:center;pointer-events:none;width:min(92vw,460px)}
+.toast{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 14px;font-weight:800;font-size:14px;text-align:center;animation:pop .25s ease-out}
+.toast.bad{border-color:var(--bad);color:#ffc2c8}
+.toast.good{border-color:var(--good);color:#c8ffe4}
+@keyframes pop{from{transform:translateY(-6px);opacity:.4}to{transform:none;opacity:1}}
+.modal{position:absolute;inset:0;display:grid;place-items:center;background:rgba(5,10,14,.6);padding-inline:max(16px,env(safe-area-inset-left,0px));z-index:5}
+.card{background:#13222c;border:1px solid var(--line);border-radius:20px;padding:22px;width:min(100%,420px);display:grid;gap:14px}
+.card h2{margin:0;font:400 34px/1 var(--display);color:var(--fox);letter-spacing:.5px;text-wrap:balance}
+.card h3{margin:0;font:400 22px var(--display);text-wrap:balance}
+.card p{margin:0;line-height:1.5;color:#d6dcd6}
+.card ol{margin:0;padding-left:20px;line-height:1.55;color:#d6dcd6}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.row div{min-width:0}
+.row small{display:block;color:var(--muted);font-size:13px}
+.row b{font-weight:800}
+@media (max-width:640px){.hint{display:none}.board{min-width:0;font-size:12px}button.act{min-width:150px;font-size:17px}.wallet b{font-size:22px}}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}}
+</style>
+
+<div id="app">
+  <canvas id="cv" aria-label="Egg Heist game field"></canvas>
+  <div class="hud top">
+    <div class="wallet"><span class="coin"></span><b id="coins">0</b><span id="rate">+0/s</span></div>
+    <ol id="board" class="board"></ol>
+  </div>
+  <div class="hud bottom">
+    <div class="hint" id="hint"><kbd>WASD</kbd> move · <kbd>E</kbd> buy / steal · <kbd>L</kbd> lock coop · <kbd>U</kbd> upgrades</div>
+    <div class="btns">
+      <button id="lockBtn" class="lock">Lock coop</button>
+      <button id="shopBtn">Upgrades</button>
+      <button id="actBtn" class="act idle">Walk to an egg</button>
+    </div>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+
+  <div id="shop" class="modal" hidden>
+    <div class="card">
+      <h3>Upgrades</h3>
+      <div id="shopRows"></div>
+      <button id="closeShop">Back to the farm</button>
+    </div>
+  </div>
+
+  <div id="intro" class="modal">
+    <div class="card">
+      <h2>Egg Heist</h2>
+      <p>You're a fox with a coop and big ambitions. Three rivals live on the same farm.</p>
+      <ol>
+        <li>Buy eggs off the hatchery belt and carry them home. Each egg in your coop earns coins every second.</li>
+        <li>Sneak into a rival's den and steal their eggs. If the owner tags you, the egg goes back.</li>
+        <li>Rivals raid you too. Tag a thief to win your egg back, or lock your coop for 20 seconds.</li>
+      </ol>
+      <button id="startBtn" class="act">Start the heist</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+const W = 1600, H = 1040, BY = 520, BH = 84, BELT_SPEED = 55;
+const KEY = 'egg-heist-v1';
+
+const TYPES = [
+  {name:'Speckled', price:40,     inc:1,    base:'#efe3c8', accent:'#8a6f4d', pat:'spots',   w:50},
+  {name:'Mint',     price:220,    inc:5,    base:'#a5f0cc', accent:'#2f9e74', pat:'zig',     w:24},
+  {name:'Sunrise',  price:900,    inc:18,   base:'#ffb36b', accent:'#ff5d8f', pat:'stripes', w:12},
+  {name:'Frostbite',price:3500,   inc:60,   base:'#c6e9ff', accent:'#4f9fe0', pat:'crystal', w:6},
+  {name:'Lava',     price:13000,  inc:200,  base:'#3a1c1c', accent:'#ff6b2c', pat:'cracks',  w:2.6},
+  {name:'Nebula',   price:50000,  inc:700,  base:'#2b1b52', accent:'#c59cff', pat:'stars',   w:1},
+  {name:'Golden',   price:200000, inc:2500, base:'#ffd54a', accent:'#fff6c2', pat:'shine',   w:0.3},
+];
+const SLOT_COST = [0,0,0,0,400,2000,8000,30000];
+const SPEED_COST = l => Math.round(250 * Math.pow(3.2, l));
+const KINDS = {
+  fox:     {body:'#ff8a3d', belly:'#fff1e0', ear:'#3a2418', tip:'#fff6ea'},
+  raccoon: {body:'#8d99a6', belly:'#d8dee4', ear:'#2a2f36', mask:'#262b31', stripes:'#2a2f36'},
+  weasel:  {body:'#c58f52', belly:'#f3dfc0', ear:'#6b4524', tip:'#5a3a1d'},
+  possum:  {body:'#d9cfd6', belly:'#f6f0f3', ear:'#f2a6c0', nose:'#f2a6c0'},
+};
+
+const rand = (a,b) => a + Math.random()*(b-a);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+function hexA(h,a){const n=parseInt(h.slice(1),16);return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`;}
+function fmt(n){n=Math.floor(n);if(n<1000)return ''+n;const u=['K','M','B','T'];let i=-1;while(n>=1000&&i<u.length-1){n/=1000;i++;}return (n<10?n.toFixed(2):n<100?n.toFixed(1):Math.floor(n))+u[i];}
+function pickType(){const tot=TYPES.reduce((s,t)=>s+t.w,0);let r=Math.random()*tot;for(let i=0;i<TYPES.length;i++){r-=TYPES[i].w;if(r<=0)return i;}return 0;}
+
+// ---------- world ----------
+let T = 0, eggId = 1;
+function makeBase(i,x,y,color,label){return {i,x,y,w:560,h:340,color,label,slots:Array(8).fill(null),unlocked:4,lockUntil:0,lockReady:0};}
+const bases = [
+  makeBase(0, 80,  60,  '#6ec1ff', "Rook's Den"),
+  makeBase(1, 960, 60,  '#7bd389', "Mabel's Burrow"),
+  makeBase(2, 80,  640, '#ff8a3d', 'Your Coop'),
+  makeBase(3, 960, 640, '#c59cff', "Juniper's Nook"),
+];
+const PB = bases[2];
+const slotPos = (b,k) => ({x: b.x + 85 + (k%4)*130, y: b.y + 140 + Math.floor(k/4)*120});
+const homePt = b => ({x: b.x + b.w/2, y: b.y + b.h/2 + 30});
+const inRect = (a,b) => a.x>b.x && a.x<b.x+b.w && a.y>b.y && a.y<b.y+b.h;
+const isLocked = b => T < b.lockUntil;
+const freeSlot = b => { for(let k=0;k<b.unlocked;k++) if(!b.slots[k]) return k; return -1; };
+const income = b => b.slots.reduce((s,e)=>s+(e?TYPES[e.t].inc:0),0);
+const newEgg = t => ({t, id: eggId++});
+
+function makeActor(kind,name,base,speed){const h=homePt(bases[base]);return {kind,name,base,speed,x:h.x,y:h.y,r:20,face:1,moving:false,carry:null,stunUntil:0,state:'home',target:null,decideT:rand(1,3),raidT:rand(22,40),coins:150,wander:null,lockRolled:false};}
+const player = makeActor('fox','You',2,230);
+const actors = [player, makeActor('raccoon','Rook',0,172), makeActor('weasel','Mabel',1,178), makeActor('possum','Juniper',3,168)];
+const ownerOf = bi => actors.find(a=>a.base===bi);
+
+let coins = 100, speedLvl = 0;
+// starter eggs
+PB.slots[0] = newEgg(0);
+for (const a of actors) if (a!==player) { const b=bases[a.base]; const n=2+Math.floor(Math.random()*2); for(let k=0;k<n;k++) b.slots[k]=newEgg(Math.random()<.25?1:0); }
+
+// load save
+try {
+  const s = JSON.parse(localStorage.getItem(KEY)||'null');
+  if (s && typeof s.coins==='number') {
+    coins = s.coins; speedLvl = s.speedLvl||0; PB.unlocked = clamp(s.unlocked||4,4,8);
+    PB.slots = Array(8).fill(null).map((_,k)=> (s.slots && s.slots[k]!=null) ? newEgg(s.slots[k]) : null);
+  }
+} catch(e) {}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({coins,speedLvl,unlocked:PB.unlocked,slots:PB.slots.map(e=>e?e.t:null)}));}catch(e){}}
+
+const belt = [], floats = [];
+let spawnT = 0;
+for (let x=120; x<W; x+=rand(110,170)) belt.push({id:eggId++, t:pickType(), x, y:BY});
+
+// decoration
+const tufts = []; { let s=7; const r=()=> (s=(s*16807)%2147483647)/2147483647; for(let i=0;i<420;i++) tufts.push({x:r()*W,y:r()*H,k:r()}); }
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const toastsEl = $('toasts');
+function toast(msg,tone=''){const d=document.createElement('div');d.className='toast '+tone;d.textContent=msg;toastsEl.prepend(d);while(toastsEl.children.length>3)toastsEl.lastChild.remove();setTimeout(()=>d.remove(),3800);}
+function float(x,y,text,color){floats.push({x,y,text,color,life:1.2});}
+
+// ---------- input ----------
+const keys = new Set();
+let joy = null;
+window.addEventListener('keydown', e => {
+  if (!$('intro').hidden) { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); startGame(); } return; }
+  const k = e.key.toLowerCase();
+  if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' ','e'].includes(k)) e.preventDefault();
+  if (document.activeElement && document.activeElement.tagName==='BUTTON' && (k===' '||k==='e')) document.activeElement.blur();
+  if (!e.repeat) {
+    if (k==='e'||k===' ') doAction();
+    if (k==='l') lockCoop();
+    if (k==='u') toggleShop();
+    if (k==='escape') $('shop').hidden = true;
+  }
+  keys.add(k);
+});
+window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => keys.clear());
+cv.addEventListener('pointerdown', e => { joy = {id:e.pointerId, ox:e.offsetX, oy:e.offsetY, x:e.offsetX, y:e.offsetY}; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', e => { if (joy && e.pointerId===joy.id) { joy.x=e.offsetX; joy.y=e.offsetY; } });
+const endJoy = e => { if (joy && e.pointerId===joy.id) joy=null; };
+cv.addEventListener('pointerup', endJoy); cv.addEventListener('pointercancel', endJoy);
+
+$('actBtn').addEventListener('click', () => doAction());
+$('lockBtn').addEventListener('click', () => lockCoop());
+$('shopBtn').addEventListener('click', () => toggleShop());
+$('closeShop').addEventListener('click', () => $('shop').hidden = true);
+function startGame(){ $('intro').hidden = true; try{localStorage.setItem(KEY+'-intro','1');}catch(e){} }
+$('startBtn').addEventListener('click', startGame);
+try { if (localStorage.getItem(KEY+'-intro')) $('intro').hidden = true; } catch(e) {}
+
+// ---------- actions ----------
+let action = null;
+function computeAction(){
+  const p = player;
+  if (T < p.stunUntil) return null;
+  if (p.carry) {
+    if (inRect(p,PB) && freeSlot(PB)<0) { const ty=TYPES[p.carry.egg.t]; return {kind:'sellCarry', label:`Coop full · sell +${fmt(ty.price/2)}`, cls:'sell', ok:true}; }
+    return null;
+  }
+  let best=null, bd=70;
+  for (const e of belt) { const d=dist(p,e); if (d<bd) { bd=d; best=e; } }
+  if (best) { const ty=TYPES[best.t]; return {kind:'buy', ref:best, label:`Buy ${ty.name} · ${fmt(ty.price)}`, cls:'', ok:coins>=ty.price}; }
+  for (const b of bases) {
+    if (!inRect(p,b)) continue;
+    let bk=-1, bdd=62;
+    for (let k=0;k<b.unlocked;k++) if (b.slots[k]) { const d=dist(p,slotPos(b,k)); if (d<bdd) { bdd=d; bk=k; } }
+    if (bk<0) continue;
+    const ty = TYPES[b.slots[bk].t];
+    if (b===PB) return {kind:'sell', b, k:bk, label:`Sell ${ty.name} +${fmt(ty.price/2)}`, cls:'sell', ok:true};
+    return {kind:'steal', b, k:bk, label:`Steal ${ty.name}`, cls:'steal', ok:!isLocked(b)};
+  }
+  return null;
+}
+function doAction(){
+  if (!$('shop').hidden || !$('intro').hidden) return;
+  const a = computeAction(); if (!a || !a.ok) { if (a && a.kind==='buy') toast(`Need ${fmt(TYPES[a.ref.t].price-coins)} more coins.`); return; }
+  const p = player;
+  if (a.kind==='buy') {
+    const ty=TYPES[a.ref.t]; coins-=ty.price; p.carry={egg:newEgg(a.ref.t), from:-1};
+    belt.splice(belt.indexOf(a.ref),1); float(p.x,p.y-50,`-${fmt(ty.price)}`,'#ffcf4a');
+    if (freeSlot(PB)<0) toast('Your coop is full. Sell an egg or buy a slot in Upgrades.');
+  } else if (a.kind==='steal') {
+    const egg=a.b.slots[a.k]; a.b.slots[a.k]=null; p.carry={egg, from:a.b.i, slot:a.k};
+    toast(`Grabbed a ${TYPES[egg.t].name} egg! Run for your coop.`,'good');
+  } else if (a.kind==='sell') {
+    const ty=TYPES[PB.slots[a.k].t]; PB.slots[a.k]=null; coins+=ty.price/2; float(p.x,p.y-50,`+${fmt(ty.price/2)}`,'#5ee0a0');
+  } else if (a.kind==='sellCarry') {
+    const ty=TYPES[p.carry.egg.t]; coins+=ty.price/2; p.carry=null; float(p.x,p.y-50,`+${fmt(ty.price/2)}`,'#5ee0a0');
+  }
+}
+function lockCoop(){
+  if (T < PB.lockReady) { toast(`Lock recharging: ${Math.ceil(PB.lockReady-T)}s`); return; }
+  PB.lockUntil = T + 20; PB.lockReady = T + 60;
+  toast('Coop locked for 20 seconds.','good');
+}
+function toggleShop(){ const s=$('shop'); s.hidden=!s.hidden; if(!s.hidden) renderShop(); }
+let resetArmed = false;
+function renderShop(){
+  const rows = $('shopRows'); rows.innerHTML='';
+  const add = (title, sub, label, ok, fn) => {
+    const r=document.createElement('div'); r.className='row';
+    r.innerHTML=`<div><b></b><small></small></div>`; r.querySelector('b').textContent=title; r.querySelector('small').textContent=sub;
+    const btn=document.createElement('button'); btn.textContent=label; btn.disabled=!ok; btn.addEventListener('click',()=>{fn();renderShop();});
+    r.appendChild(btn); rows.appendChild(r);
+  };
+  if (PB.unlocked<8) { const c=SLOT_COST[PB.unlocked]; add('Extra nest', `Nest ${PB.unlocked+1} of 8 in your coop`, fmt(c), coins>=c, ()=>{coins-=c;PB.unlocked++;toast('New nest built.','good');}); }
+  else add('Extra nest','Coop is fully built','Maxed',false,()=>{});
+  if (speedLvl<5) { const c=SPEED_COST(speedLvl); add('Quick paws', `Level ${speedLvl}/5 · +12% run speed`, fmt(c), coins>=c, ()=>{coins-=c;speedLvl++;}); }
+  else add('Quick paws','Level 5/5','Maxed',false,()=>{});
+  add('Start over', resetArmed?'Tap again to wipe your coop and coins':'Wipe your progress on this device', resetArmed?'Confirm':'Reset', true, ()=>{
+    if(!resetArmed){resetArmed=true;setTimeout(()=>{resetArmed=false;if(!$('shop').hidden)renderShop();},4000);return;}
+    try{localStorage.removeItem(KEY);}catch(e){} coins=100;speedLvl=0;PB.unlocked=4;PB.slots=Array(8).fill(null);PB.slots[0]=newEgg(0);player.carry=null;resetArmed=false;toast('Fresh start.');
+  });
+}
+
+// ---------- AI ----------
+function pickBeltEgg(a){
+  const b=bases[a.base]; const fs=freeSlot(b);
+  let minP=Infinity; for(let k=0;k<b.unlocked;k++) if(b.slots[k]) minP=Math.min(minP,TYPES[b.slots[k].t].price);
+  let best=null;
+  for (const e of belt) {
+    if (e.x<0 || e.x>W-320) continue;
+    const p=TYPES[e.t].price; if (p>a.coins) continue;
+    if (fs<0 && p<=minP) continue;
+    if (actors.some(o=>o!==a&&o.state==='shop'&&o.target===e.id)) continue;
+    if (!best || p>TYPES[best.t].price) best=e;
+  }
+  return best;
+}
+function pickRaid(a){
+  const c=[];
+  for (const b of bases) { if (b.i===a.base||isLocked(b)) continue;
+    for (let k=0;k<b.unlocked;k++) if (b.slots[k]) c.push({bi:b.i,k,score:TYPES[b.slots[k].t].price*(b===PB?1.5:1)*rand(.6,1.4)}); }
+  c.sort((x,y)=>y.score-x.score); return c[0]||null;
+}
+function moveToward(a,tx,ty,dt,spd){
+  const dx=tx-a.x, dy=ty-a.y, d=Math.hypot(dx,dy);
+  if (d<3) return true;
+  const s=Math.min(d,spd*dt); a.x+=dx/d*s; a.y+=dy/d*s; if(Math.abs(dx)>2)a.face=dx>0?1:-1; a.moving=true;
+  return d<=spd*dt+3;
+}
+function aiUpdate(a,dt){
+  if (T<a.stunUntil) return;
+  const b=bases[a.base], home=homePt(b), spd=a.speed*(a.carry?0.78:1);
+  if (!a.carry && a.state!=='chase') { const th=actors.find(o=>o!==a&&o.carry&&o.carry.from===a.base); if (th) { a.state='chase'; a.target=th; } }
+  // lock when the fox prowls close
+  const near = player.x>b.x-180&&player.x<b.x+b.w+180&&player.y>b.y-180&&player.y<b.y+b.h+180;
+  if (near && !player.carry && !a.lockRolled && T>=b.lockReady) { a.lockRolled=true; if(Math.random()<.3){ b.lockUntil=T+15; b.lockReady=T+50; toast(`${a.name} locked their door.`); } }
+  if (!near && Math.hypot(player.x-home.x,player.y-home.y)>520) a.lockRolled=false;
+  a.decideT-=dt; a.raidT-=dt;
+  switch (a.state) {
+    case 'home': {
+      if (!a.wander || moveToward(a,a.wander.x,a.wander.y,dt,spd*.35)) a.wander={x:home.x+rand(-140,140),y:home.y+rand(-50,40)};
+      if (a.decideT<=0) {
+        a.decideT=rand(1.5,4);
+        if (b.unlocked<8 && a.coins>SLOT_COST[b.unlocked]*1.4) { a.coins-=SLOT_COST[b.unlocked]; b.unlocked++; }
+        const e=pickBeltEgg(a); if (e) { a.state='shop'; a.target=e.id; break; }
+        if (a.raidT<=0) { a.raidT=rand(28,55); const r=pickRaid(a); if (r) { a.state='raid'; a.target=r; } }
+      }
+      break; }
+    case 'shop': {
+      const e=belt.find(x=>x.id===a.target); if(!e||e.x>W-30){a.state='return';break;}
+      const ty=TYPES[e.t]; if(a.coins<ty.price){a.state='return';break;}
+      const d=dist(a,e); moveToward(a,e.x+Math.min(200,BELT_SPEED*d/spd),e.y,dt,spd);
+      if (d<34) { a.coins-=ty.price; a.carry={egg:newEgg(e.t),from:-1}; belt.splice(belt.indexOf(e),1); a.state='return'; }
+      break; }
+    case 'raid': {
+      const tb=bases[a.target.bi], egg=tb.slots[a.target.k];
+      if (!egg||isLocked(tb)) { a.state='return'; break; }
+      const p=slotPos(tb,a.target.k);
+      if (moveToward(a,p.x,p.y+20,dt,spd)) {
+        tb.slots[a.target.k]=null; a.carry={egg,from:tb.i,slot:a.target.k}; a.state='return';
+        if (tb===PB) toast(`${a.name} grabbed your ${TYPES[egg.t].name} egg! Tag them to get it back.`,'bad');
+      }
+      break; }
+    case 'chase': {
+      const th=a.target; if(!th||!th.carry||th.carry.from!==a.base){a.state='return';break;}
+      moveToward(a,th.x,th.y,dt,spd*.97); break; }
+    case 'return': if (moveToward(a,home.x,home.y,dt,spd)) a.state='home'; break;
+  }
+}
+function deliver(a){
+  if (!a.carry) return; const b=bases[a.base]; if (!inRect(a,b)) return;
+  const egg=a.carry.egg, from=a.carry.from, ty=TYPES[egg.t];
+  let k=freeSlot(b);
+  if (k<0) {
+    if (a===player) return;
+    let mk=-1; for(let i=0;i<b.unlocked;i++) if(b.slots[i]&&(mk<0||TYPES[b.slots[i].t].price<TYPES[b.slots[mk].t].price)) mk=i;
+    if (mk>=0 && TYPES[b.slots[mk].t].price<ty.price) { a.coins+=TYPES[b.slots[mk].t].price/2; k=mk; }
+    else { a.coins+=ty.price/2; a.carry=null; return; }
+  }
+  b.slots[k]=egg; a.carry=null;
+  if (from>=0 && from!==a.base) {
+    if (a===player) toast(`Heist complete! The ${ty.name} egg is yours.`,'good');
+    else if (from===PB.i) toast(`${a.name} got away with your ${ty.name} egg.`,'bad');
+  }
+  if (a===player) float(a.x,a.y-50,ty.name+' placed','#f4efe2');
+}
+function catches(){
+  for (const th of actors) {
+    if (!th.carry || th.carry.from<0) continue;
+    const owner=ownerOf(th.carry.from); if (!owner||owner===th||T<owner.stunUntil) continue;
+    if (dist(owner,th) < owner.r+th.r+6) {
+      const b=bases[th.carry.from], egg=th.carry.egg; let k=th.carry.slot;
+      if (k==null || k>=b.unlocked || b.slots[k]) k=freeSlot(b);
+      if (k>=0) b.slots[k]=egg; else if (owner===player) coins+=TYPES[egg.t].price/2; else owner.coins+=TYPES[egg.t].price/2;
+      th.carry=null; th.stunUntil=T+1.4; th.state='return';
+      if (owner===player) toast(`Tagged ${th.name}! Your ${TYPES[egg.t].name} egg is back.`,'good');
+      if (th===player) toast(`${owner.name} caught you. The egg went back.`,'bad');
+      float(th.x,th.y-50,'Tagged!','#ff5d6c');
+    }
+  }
+}
+function pushOut(a){
+  for (const b of bases) {
+    if (b.i===a.base||!isLocked(b)) continue; const m=a.r;
+    if (a.x>b.x-m&&a.x<b.x+b.w+m&&a.y>b.y-m&&a.y<b.y+b.h+m) {
+      const dl=a.x-(b.x-m), dr=b.x+b.w+m-a.x, du=a.y-(b.y-m), dd=b.y+b.h+m-a.y, mn=Math.min(dl,dr,du,dd);
+      if (mn===dl) a.x=b.x-m; else if (mn===dr) a.x=b.x+b.w+m; else if (mn===du) a.y=b.y-m; else a.y=b.y+b.h+m;
+    }
+  }
+}
+
+// ---------- update ----------
+let incomeTick = 0, saveTick = 0;
+function update(dt){
+  T += dt;
+  // belt
+  spawnT -= dt;
+  if (spawnT<=0) { spawnT=rand(1.3,2.1); belt.push({id:eggId++,t:pickType(),x:-30,y:BY}); }
+  for (let i=belt.length-1;i>=0;i--) { belt[i].x+=BELT_SPEED*dt; if (belt[i].x>W+30) belt.splice(i,1); }
+  // player
+  const p=player; p.moving=false;
+  if (T>=p.stunUntil && $('shop').hidden && $('intro').hidden) {
+    let vx=0, vy=0;
+    if (keys.has('a')||keys.has('arrowleft')) vx--; if (keys.has('d')||keys.has('arrowright')) vx++;
+    if (keys.has('w')||keys.has('arrowup')) vy--; if (keys.has('s')||keys.has('arrowdown')) vy++;
+    if (joy) { const jx=(joy.x-joy.ox)/50, jy=(joy.y-joy.oy)/50; if (Math.hypot(jx,jy)>0.15) { vx+=jx; vy+=jy; } }
+    const m=Math.hypot(vx,vy);
+    if (m>0) { if (m>1) { vx/=m; vy/=m; } const spd=p.speed*(1+.12*speedLvl)*(p.carry?0.75:1); p.x+=vx*spd*dt; p.y+=vy*spd*dt; if (Math.abs(vx)>.1) p.face=vx>0?1:-1; p.moving=true; }
+  }
+  for (const a of actors) { if (a!==p) aiUpdate(a,dt); }
+  for (const a of actors) { pushOut(a); a.x=clamp(a.x,20,W-20); a.y=clamp(a.y,30,H-20); deliver(a); }
+  catches();
+  // income
+  coins += income(PB)*dt;
+  for (const a of actors) if (a!==p) a.coins += income(bases[a.base])*dt;
+  incomeTick += dt;
+  if (incomeTick>=1) { incomeTick=0; for (let k=0;k<8;k++) { const e=PB.slots[k]; if (e) { const s=slotPos(PB,k); float(s.x+rand(-6,6),s.y-34,'+'+fmt(TYPES[e.t].inc),'#ffcf4a'); } } }
+  for (let i=floats.length-1;i>=0;i--) { const f=floats[i]; f.life-=dt; f.y-=28*dt; if (f.life<=0) floats.splice(i,1); }
+  saveTick += dt; if (saveTick>4) { saveTick=0; save(); }
+}
+
+// ---------- drawing ----------
+let dpr=1, vw=0, vh=0, scale=1, cam={x:0,y:0};
+function resize(){ dpr=Math.min(2,window.devicePixelRatio||1); vw=cv.clientWidth; vh=cv.clientHeight; cv.width=Math.round(vw*dpr); cv.height=Math.round(vh*dpr); scale=clamp(Math.min(vw/1050,vh/680),0.5,1.25); }
+window.addEventListener('resize', resize);
+
+function rr(x,y,w,h,r){g.beginPath();g.roundRect?g.roundRect(x,y,w,h,r):g.rect(x,y,w,h);}
+function ell(x,y,rx,ry){g.beginPath();g.ellipse(x,y,rx,ry,0,0,Math.PI*2);g.fill();}
+
+function eggPath(x,y,s){const w=16*s,h=21*s;g.beginPath();g.moveTo(x,y-h);g.bezierCurveTo(x+w*1.1,y-h,x+w*1.15,y+h*.95,x,y+h*.95);g.bezierCurveTo(x-w*1.15,y+h*.95,x-w*1.1,y-h,x,y-h);g.closePath();}
+function drawEgg(x,y,s,t,wob){
+  const ty=TYPES[t];
+  g.save();
+  if (wob) { g.translate(x,y+20*s); g.rotate(Math.sin(T*3+wob)*0.06); g.translate(-x,-y-20*s); }
+  if (ty.pat==='cracks'||ty.pat==='stars'||ty.pat==='shine') { g.shadowColor=ty.accent; g.shadowBlur=14*s; }
+  eggPath(x,y,s); g.fillStyle=ty.base; g.fill(); g.shadowBlur=0;
+  g.save(); eggPath(x,y,s); g.clip();
+  g.fillStyle=ty.accent; g.strokeStyle=ty.accent; g.lineWidth=3*s;
+  if (ty.pat==='spots') { for (const [a,b,r] of [[-6,-9,3],[5,-3,2.6],[-3,6,2.2],[7,9,1.8],[-9,2,1.6],[2,14,1.5]]) ell(x+a*s,y+b*s,r*s,r*s); }
+  else if (ty.pat==='zig') { g.beginPath(); for(let i=-4;i<=4;i++) g.lineTo(x+i*5*s,y+(i%2?-4:4)*s); g.stroke(); }
+  else if (ty.pat==='stripes') { g.fillRect(x-20*s,y-8*s,40*s,5*s); g.fillRect(x-20*s,y+4*s,40*s,5*s); }
+  else if (ty.pat==='crystal') { g.fillStyle='rgba(255,255,255,.85)'; for (const [a,b] of [[-6,-6],[6,2],[-2,10]]) { g.beginPath(); g.moveTo(x+a*s,y+(b-6)*s); g.lineTo(x+(a+4)*s,y+b*s); g.lineTo(x+a*s,y+(b+6)*s); g.lineTo(x+(a-4)*s,y+b*s); g.fill(); } }
+  else if (ty.pat==='cracks') { g.lineWidth=2.2*s; g.shadowColor=ty.accent; g.shadowBlur=8*s; g.beginPath(); g.moveTo(x-10*s,y-6*s); g.lineTo(x-3*s,y-1*s); g.lineTo(x-6*s,y+6*s); g.lineTo(x+2*s,y+11*s); g.moveTo(x-3*s,y-1*s); g.lineTo(x+7*s,y-8*s); g.lineTo(x+11*s,y+2*s); g.stroke(); }
+  else if (ty.pat==='stars') { g.fillStyle='#fff'; for (let i=0;i<7;i++){ const a=i*2.4, r=(4+i*1.6)*s; const tw=.5+.5*Math.sin(T*4+i); g.globalAlpha=.4+.6*tw; ell(x+Math.cos(a)*r*.8,y+Math.sin(a)*r,1.4*s,1.4*s);} g.globalAlpha=1; }
+  else if (ty.pat==='shine') { const o=((T*30)%70)-35; g.fillStyle='rgba(255,255,255,.55)'; g.beginPath(); g.moveTo(x+(o-6)*s,y-25*s); g.lineTo(x+(o+4)*s,y-25*s); g.lineTo(x+(o-6)*s,y+25*s); g.lineTo(x+(o-16)*s,y+25*s); g.fill(); }
+  g.fillStyle='rgba(255,255,255,.35)'; ell(x-6*s,y-10*s,3.5*s,6*s);
+  g.restore();
+  eggPath(x,y,s); g.lineWidth=2*s; g.strokeStyle='rgba(20,14,8,.55)'; g.stroke();
+  g.restore();
+}
+
+function drawGround(){
+  g.fillStyle='#17302a'; g.fillRect(0,0,W,H);
+  for (const t of tufts) { g.fillStyle=t.k>.5?'#1d3a32':'#13281f'; g.fillRect(t.x,t.y,3,6+t.k*5); g.fillRect(t.x+4,t.y+2,3,4+t.k*4); }
+  // dirt path along belt and to dens
+  g.fillStyle='#2a2a22'; g.fillRect(0,BY-BH/2-34,W,BH+68);
+  for (const b of bases) { const gx=b.x+b.w/2-70, top=b.y<BY; g.fillRect(gx, top?b.y+b.h-10:BY+BH/2+30, 140, top?(BY-BH/2-30)-(b.y+b.h-10):(b.y+10)-(BY+BH/2+30)); }
+}
+function drawBelt(){
+  const y0=BY-BH/2;
+  g.fillStyle='#1b1f25'; g.fillRect(0,y0-8,W,BH+16);
+  g.fillStyle='#2b3139'; g.fillRect(0,y0,W,BH);
+  g.save(); g.beginPath(); g.rect(0,y0,W,BH); g.clip();
+  g.strokeStyle='rgba(255,207,74,.16)'; g.lineWidth=6;
+  const off=(T*BELT_SPEED)%60;
+  for (let x=-60+off; x<W+60; x+=60) { g.beginPath(); g.moveTo(x-14,y0+14); g.lineTo(x+6,BY); g.lineTo(x-14,y0+BH-14); g.stroke(); }
+  g.restore();
+  g.fillStyle='#3d4550'; g.fillRect(0,y0-8,W,4); g.fillRect(0,y0+BH+4,W,4);
+  // hatchery
+  rr(-20,y0-40,90,BH+80,14); g.fillStyle='#3b2f4a'; g.fill();
+  g.fillStyle=hexA('#ffcf4a',.25+.15*Math.sin(T*3)); rr(30,y0+10,30,BH-20,8); g.fill();
+  g.fillStyle='#f4efe2'; g.font='16px "Lilita One", sans-serif'; g.textAlign='left';
+  g.save(); g.translate(18,BY+40); g.rotate(-Math.PI/2); g.fillText('HATCHERY',0,0); g.restore();
+}
+function drawNest(x,y,on){
+  g.fillStyle=on?'#6b4a22':'rgba(255,255,255,.05)'; ell(x,y+16,34,13);
+  if (on) { g.strokeStyle='#a5793c'; g.lineWidth=2; for(let i=0;i<7;i++){ const a=i/7*Math.PI; g.beginPath(); g.moveTo(x-30+i*9,y+10+Math.sin(a)*2); g.lineTo(x-22+i*9,y+22); g.stroke(); } }
+}
+function drawBase(b){
+  const top=b.y<BY;
+  g.fillStyle=hexA(b.color,.07); rr(b.x,b.y,b.w,b.h,18); g.fill();
+  // fence with gate gap toward belt
+  g.strokeStyle=hexA(b.color,.75); g.lineWidth=5; g.setLineDash([16,10]);
+  const gx1=b.x+b.w/2-70, gx2=b.x+b.w/2+70, gy=top?b.y+b.h:b.y, oy=top?b.y:b.y+b.h;
+  g.beginPath(); g.moveTo(gx1,gy); g.lineTo(b.x,gy); g.lineTo(b.x,oy); g.lineTo(b.x+b.w,oy); g.lineTo(b.x+b.w,gy); g.lineTo(gx2,gy); g.stroke();
+  g.setLineDash([]);
+  g.fillStyle=b.color; for (const px of [gx1,gx2]) { rr(px-7,gy-14,14,28,4); g.fill(); }
+  // sign
+  const ly = top ? b.y+18 : b.y+b.h-58;
+  g.fillStyle='rgba(8,14,18,.7)'; rr(b.x+18,ly,250,40,10); g.fill();
+  g.fillStyle=b.color; g.font='22px "Lilita One", sans-serif'; g.textAlign='left'; g.fillText(b.label,b.x+30,ly+28);
+  g.fillStyle='#ffcf4a'; g.font='800 15px Nunito, sans-serif'; g.textAlign='right'; g.fillText('+'+fmt(income(b))+'/s',b.x+258,ly+27);
+  for (let k=0;k<8;k++) {
+    const s=slotPos(b,k), on=k<b.unlocked; drawNest(s.x,s.y,on);
+    if (!on && b===PB) { g.fillStyle='rgba(255,255,255,.3)'; g.font='800 13px Nunito, sans-serif'; g.textAlign='center'; g.fillText('+ '+fmt(SLOT_COST[k]),s.x,s.y+20); }
+    if (on && b.slots[k]) drawEgg(s.x,s.y-6,1.15,b.slots[k].t,b.slots[k].id);
+  }
+}
+function drawLock(b){
+  if (!isLocked(b)) return;
+  const left=b.lockUntil-T;
+  g.fillStyle=hexA(b.color,.14+.05*Math.sin(T*5)); rr(b.x-6,b.y-6,b.w+12,b.h+12,22); g.fill();
+  g.strokeStyle=hexA(b.color,.9); g.lineWidth=3; g.setLineDash([8,8]); g.lineDashOffset=-T*30; rr(b.x-6,b.y-6,b.w+12,b.h+12,22); g.stroke(); g.setLineDash([]);
+  g.fillStyle='rgba(8,14,18,.75)'; rr(b.x+b.w/2-70,b.y+b.h/2-4,140,34,10); g.fill();
+  g.fillStyle='#f4efe2'; g.font='18px "Lilita One", sans-serif'; g.textAlign='center'; g.fillText('LOCKED '+Math.ceil(left)+'s',b.x+b.w/2,b.y+b.h/2+20);
+}
+function drawBeltEgg(e){
+  drawEgg(e.x,e.y-8,1,e.t,e.id);
+  const ty=TYPES[e.t], txt=fmt(ty.price), afford=coins>=ty.price;
+  g.font='800 12px Nunito, sans-serif'; const w=g.measureText(txt).width+14;
+  g.fillStyle=afford?'rgba(255,207,74,.95)':'rgba(10,14,18,.8)'; rr(e.x-w/2,e.y+16,w,18,9); g.fill();
+  g.fillStyle=afford?'#2a1d02':'#9db0b6'; g.textAlign='center'; g.fillText(txt,e.x,e.y+29);
+}
+function drawCritter(a){
+  const k=KINDS[a.kind], f=a.face||1, bob=a.moving?Math.sin(T*16)*1.8:0, x=a.x, y=a.y+bob;
+  g.fillStyle='rgba(0,0,0,.32)'; ell(a.x,a.y+19,21,7);
+  if (a===player) { g.strokeStyle='rgba(255,138,61,.55)'; g.lineWidth=2; g.beginPath(); g.ellipse(a.x,a.y+19,27,10,0,0,Math.PI*2); g.stroke(); }
+  // tail
+  g.fillStyle=k.body; ell(x-f*20,y+5,14,8);
+  if (k.tip) { g.fillStyle=k.tip; ell(x-f*31,y+3,6,5); }
+  if (k.stripes) { g.fillStyle=k.stripes; g.fillRect(x-f*20-2,y-2,4,14); g.fillRect(x-f*28-2,y-1,4,12); }
+  // ears
+  for (const s of [-1,1]) {
+    g.fillStyle=k.body; g.beginPath(); g.moveTo(x+s*5,y-14); g.lineTo(x+s*18,y-10); g.lineTo(x+s*14,y-31); g.fill();
+    g.fillStyle=k.ear; g.beginPath(); g.moveTo(x+s*8,y-15); g.lineTo(x+s*15,y-13); g.lineTo(x+s*13.5,y-25); g.fill();
+  }
+  g.fillStyle=k.body; ell(x,y,19,19);
+  g.fillStyle=k.belly; ell(x+f*3,y+7,12,9);
+  if (k.mask) { g.fillStyle=k.mask; rr(x-15+f*2,y-9,30,9,4); g.fill(); }
+  g.fillStyle='#fff'; ell(x+f*4-6,y-4,3.4,3.4); ell(x+f*4+6,y-4,3.4,3.4);
+  g.fillStyle='#14100c'; ell(x+f*5-6,y-4,1.8,1.8); ell(x+f*5+6,y-4,1.8,1.8);
+  g.fillStyle=k.nose||'#14100c'; ell(x+f*13,y+3,3,2.4);
+  let ly=y-40;
+  if (a.carry) { drawEgg(x,y-46,.8,a.carry.egg.t,0); ly=y-72; }
+  const thief = a.carry && a.carry.from===PB.i && a!==player;
+  g.font='800 13px Nunito, sans-serif'; g.textAlign='center';
+  const label = thief ? a.name+' · THIEF' : a.name;
+  const w=g.measureText(label).width+12;
+  g.fillStyle=thief?'rgba(255,93,108,.9)':'rgba(8,14,18,.6)'; rr(x-w/2,ly-13,w,18,9); g.fill();
+  g.fillStyle=thief?'#2a0609':(a===player?'#ff8a3d':'#f4efe2'); g.fillText(label,x,ly+1);
+  if (T<a.stunUntil) { g.fillStyle='#ffcf4a'; for (let i=0;i<3;i++){ const ang=T*6+i*2.1; ell(x+Math.cos(ang)*16,y-26+Math.sin(ang)*5,3,3);} }
+}
+function edgeArrow(wx,wy,color,label){
+  const sx=(wx-cam.x)*scale, sy=(wy-cam.y)*scale, m=46;
+  if (sx>m&&sx<vw-m&&sy>m+60&&sy<vh-m-70) return;
+  const cx=vw/2, cy=vh/2, ang=Math.atan2(sy-cy,sx-cx);
+  const px=clamp(sx,m,vw-m), py=clamp(sy,m+60,vh-m-70);
+  g.save(); g.translate(px,py); g.rotate(ang);
+  g.fillStyle=color; g.beginPath(); g.moveTo(16,0); g.lineTo(-10,-11); g.lineTo(-10,11); g.fill(); g.restore();
+  g.font='800 12px Nunito, sans-serif'; g.textAlign='center'; g.fillStyle=color; g.fillText(label,px-Math.cos(ang)*26,py-Math.sin(ang)*26+4);
+}
+function draw(){
+  const viewW=vw/scale, viewH=vh/scale;
+  cam.x = W<viewW ? (W-viewW)/2 : clamp(player.x-viewW/2,0,W-viewW);
+  cam.y = H<viewH ? (H-viewH)/2 : clamp(player.y-viewH/2,0,H-viewH);
+  g.setTransform(dpr,0,0,dpr,0,0); g.fillStyle='#0b141b'; g.fillRect(0,0,vw,vh);
+  g.setTransform(dpr*scale,0,0,dpr*scale,-cam.x*dpr*scale,-cam.y*dpr*scale);
+  drawGround(); drawBelt();
+  for (const b of bases) drawBase(b);
+  for (const e of belt) drawBeltEgg(e);
+  [...actors].sort((a,b)=>a.y-b.y).forEach(drawCritter);
+  for (const b of bases) drawLock(b);
+  for (const f of floats) { g.globalAlpha=clamp(f.life,0,1); g.fillStyle=f.color; g.font='800 15px Nunito, sans-serif'; g.textAlign='center'; g.fillText(f.text,f.x,f.y); }
+  g.globalAlpha=1;
+  // moon glow vignette
+  g.setTransform(dpr,0,0,dpr,0,0);
+  const vg=g.createRadialGradient(vw/2,vh/2,Math.min(vw,vh)*.35,vw/2,vh/2,Math.max(vw,vh)*.75);
+  vg.addColorStop(0,'rgba(5,10,20,0)'); vg.addColorStop(1,'rgba(5,10,20,.55)'); g.fillStyle=vg; g.fillRect(0,0,vw,vh);
+  for (const a of actors) if (a.carry && a.carry.from===PB.i && a!==player) edgeArrow(a.x,a.y,'#ff5d6c',a.name);
+  if (player.carry && !inRect(player,PB)) { const h=homePt(PB); edgeArrow(h.x,h.y,'#ff8a3d','Home'); }
+  if (joy) {
+    g.strokeStyle='rgba(255,255,255,.35)'; g.lineWidth=3; g.beginPath(); g.arc(joy.ox,joy.oy,50,0,Math.PI*2); g.stroke();
+    const dx=joy.x-joy.ox, dy=joy.y-joy.oy, d=Math.hypot(dx,dy), k=d>50?50/d:1;
+    g.fillStyle='rgba(255,138,61,.75)'; ell(joy.ox+dx*k,joy.oy+dy*k,20,20);
+  }
+}
+
+// ---------- HUD refresh ----------
+let lastAct='', lastLock='', hudT=0;
+function hud(dt){
+  hudT-=dt; if (hudT>0) return; hudT=0.1;
+  $('coins').textContent=fmt(coins);
+  $('rate').textContent='+'+fmt(income(PB))+'/s';
+  const a=computeAction(); action=a;
+  const btn=$('actBtn');
+  const key=a?a.kind+a.label+a.ok:'none'+(player.carry?'c':'');
+  if (key!==lastAct) {
+    lastAct=key;
+    if (!a) { btn.className='act idle'; btn.textContent = player.carry ? 'Carry it home' : (T<player.stunUntil?'Dazed…':'Walk to an egg'); btn.disabled=false; }
+    else { btn.className='act '+a.cls; btn.textContent=a.label; btn.disabled=!a.ok && a.kind!=='buy'; if(!a.ok&&a.kind==='buy') btn.className='act idle'; }
+  }
+  const lb=$('lockBtn');
+  const ls = isLocked(PB) ? `Locked ${Math.ceil(PB.lockUntil-T)}s` : T<PB.lockReady ? `Lock in ${Math.ceil(PB.lockReady-T)}s` : 'Lock coop';
+  if (ls!==lastLock) { lastLock=ls; lb.textContent=ls; lb.classList.toggle('on',isLocked(PB)); lb.disabled = !isLocked(PB) && T<PB.lockReady; }
+  const rows = bases.map(b=>({b,inc:income(b),name:b===PB?'You':ownerOf(b.i).name})).sort((x,y)=>y.inc-x.inc);
+  $('board').innerHTML = '<h4>Richest den</h4>' + rows.map(r=>`<li class="${r.b===PB?'me':''}"><span><i style="background:${r.b.color}"></i>${r.name}</span><span>${fmt(r.inc)}/s</span></li>`).join('');
+  if (!$('shop').hidden) { /* keep costs fresh */ if ((T*10|0)%10===0) renderShop(); }
+}
+
+// ---------- loop ----------
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  update(dt); draw(); hud(dt);
+  requestAnimationFrame(frame);
+}
+resize(); requestAnimationFrame(frame);
+window.addEventListener('beforeunload', save);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) save(); });
+})();
+</script>
+</body></html>
