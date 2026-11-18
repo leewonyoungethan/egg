@@ -1,6 +1,6 @@
 # Egg Heist
 
-A browser game: buy eggs off the hatchery belt, steal from rival dens, and lock your coop against thieves.
+A 3D browser game (Three.js): buy eggs off the hatchery belt, steal from rival dens, and lock your coop against thieves.
 
 Open `index.html` in a browser to play.
 
